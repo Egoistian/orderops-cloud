@@ -215,6 +215,41 @@ after(async () => {
   if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
 }, { timeout: 30_000 });
 
+test("개인 포트폴리오는 개발 범위와 대표 프로젝트를 API 호출 없이 보여준다", {
+  concurrency: false,
+  timeout: 30_000,
+}, async () => {
+  const { page, browserIssues, networkIssues } = await createPage({ width: 390, height: 844 });
+  const apiRequests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) apiRequests.push(url.pathname);
+  });
+
+  const response = await page.goto(`${baseUrl}/portfolio/`, { waitUntil: "networkidle" });
+  assert.equal(response.status(), 200);
+  assert.equal(new URL(page.url()).pathname, "/portfolio");
+  await page.getByRole("heading", { name: /화면·API·DB·테스트를/ }).waitFor();
+  await page.getByRole("heading", { name: "OrderOps Cloud", exact: true }).waitFor();
+
+  const images = page.locator("main img");
+  assert.ok(await images.count() >= 5, "포트폴리오에 제품 근거 이미지가 있어야 한다");
+  const naturalWidths = await images.evaluateAll((elements) =>
+    elements.map((element) => element instanceof HTMLImageElement ? element.naturalWidth : 0),
+  );
+  assert.ok(naturalWidths.every((width) => width > 0), `이미지 로드 실패: ${JSON.stringify(naturalWidths)}`);
+  await assertNoDocumentOverflow(page, "mobile portfolio");
+
+  await page.getByRole("link", { name: "프로젝트 상세 보기" }).click();
+  assert.equal(new URL(page.url()).pathname, "/case-study");
+  await page.getByRole("link", { name: "개발자 포트폴리오" }).click();
+  assert.equal(new URL(page.url()).pathname, "/portfolio");
+
+  assert.deepEqual(apiRequests, []);
+  assert.deepEqual(browserIssues, []);
+  assert.deepEqual(networkIssues, []);
+});
+
 test("구축 사례 페이지는 제품 API 없이 모든 이미지와 모바일 레이아웃을 제공한다", {
   concurrency: false,
   timeout: 30_000,

@@ -30,7 +30,7 @@ const images = {
 const proofItems = [
   { value: "3", label: "역할 권한" },
   { value: "5", label: "주문 상태" },
-  { value: "22", label: "자동화 테스트" },
+  { value: "23", label: "자동화 테스트" },
   { value: "0", label: "런타임 취약점" },
 ];
 
@@ -97,6 +97,7 @@ export function CaseStudyPage() {
           </span>
         </a>
         <nav aria-label="구축 사례 목차">
+          <a href="/portfolio">개발자 역량</a>
           <a href="#workflow">업무 흐름</a>
           <a href="#architecture">기술 설계</a>
           <a href="#verification">검증</a>
@@ -350,7 +351,7 @@ export function CaseStudyPage() {
           <div className="caseStudyVerificationGrid">
             <VerificationItem value="7" label="단위 테스트" detail="정규화 · 워크플로" />
             <VerificationItem value="12" label="통합 테스트" detail="권한 · 격리 · 동시성" />
-            <VerificationItem value="3" label="E2E 흐름" detail="제품 · 사례 페이지 · 모바일" />
+            <VerificationItem value="4" label="E2E 흐름" detail="제품 · 사례 · 포트폴리오 · 모바일" />
             <VerificationItem value="0" label="런타임 취약점" detail="npm audit --omit=dev" />
           </div>
         </section>
@@ -400,7 +401,7 @@ export function CaseStudyPage() {
           <Cloud size={21} aria-hidden="true" />
           <span><strong>OrderOps Cloud</strong></span>
         </a>
-        <span>React · Express · PostgreSQL</span>
+        <a href="/portfolio">개발자 포트폴리오</a>
         <a href="https://github.com/Egoistian/orderops-cloud" target="_blank" rel="noreferrer">
           GitHub
           <ExternalLink size={14} aria-hidden="true" />

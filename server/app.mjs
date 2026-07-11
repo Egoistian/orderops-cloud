@@ -519,8 +519,13 @@ export function createApp({
   if (staticDir) {
     app.use((request, response, next) => {
       const pathname = request.originalUrl.split("?", 1)[0];
-      if (request.method === "GET" && pathname === "/case-study/") {
-        response.redirect(302, "/case-study");
+      const canonicalRoutes = new Map([
+        ["/portfolio/", "/portfolio"],
+        ["/case-study/", "/case-study"],
+      ]);
+      const destination = canonicalRoutes.get(pathname);
+      if (["GET", "HEAD"].includes(request.method) && destination) {
+        response.redirect(302, destination);
         return;
       }
       next();
