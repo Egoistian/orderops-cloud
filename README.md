@@ -1,5 +1,7 @@
 # OrderOps Cloud
 
+[![CI](https://github.com/Egoistian/orderops-cloud/actions/workflows/ci.yml/badge.svg)](https://github.com/Egoistian/orderops-cloud/actions/workflows/ci.yml)
+
 한국형 주문 데이터를 정규화하고, 회사·역할별 권한 안에서 주문 상태를 변경하며, 모든 변경을 감사 이력으로 남기는 멀티테넌트 주문 운영 데모입니다.
 
 ![OrderOps Cloud dashboard](portfolio_assets/product/orderops-cloud-dashboard.jpg)
