@@ -15,14 +15,13 @@ const appPaths = await packager({
   prune: true,
   appVersion: "1.0.0",
   win32metadata: {
-    CompanyName: "OrderOps Cloud Portfolio",
+    CompanyName: "OrderOps Cloud",
     FileDescription: "Order cleanup and logistics classification desktop app",
     ProductName: "OrderOps Cloud",
   },
   ignore: [
     /^\/\.DS_Store$/,
     /^\/node_modules\/\.vite(\/|$)/,
-    /^\/portfolio_assets(\/|$)/,
     /^\/release(\/|$)/,
     /^\/src(\/|$)/,
   ],

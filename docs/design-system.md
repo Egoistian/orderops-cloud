@@ -1,13 +1,13 @@
 # OrderOps Cloud UI contract
 
-This file turns the accepted concept into an implementation checklist. The source of truth is `portfolio_assets/concepts/orderops-cloud-ui-concept-2026-07-11.png` and the linked Lazyweb report in the project README.
+This contract defines the visual system and interaction rules for the OrderOps Cloud workspace.
 
 ## Product surface
 
 - Desktop operations console, not a marketing page.
 - Primary workflow: sign in → scan tenant orders → select one order → perform one server-authorized status transition → confirm the new audit event.
-- All visible values come from the current tenant's seeded PostgreSQL data.
-- Always show `DEMO · 시드 데이터`; never imply a real customer deployment or real throughput.
+- All visible values come from the current tenant's PostgreSQL records.
+- Show `ROLE-BASED ACCESS` near the signed-in identity to make the active authorization context clear.
 
 ## Layout
 
@@ -42,7 +42,7 @@ Use a Korean-capable system sans stack (`Pretendard`, `Inter`, `-apple-system`, 
 - current tenant name
 - `역할`
 - current role name
-- `DEMO · 시드 데이터`
+- `ROLE-BASED ACCESS`
 - `주문 관리`
 - `전체 주문`, `예외 주문`, and workflow status filters
 - `주문번호, 고객명, 상품명 검색`
@@ -50,7 +50,7 @@ Use a Korean-capable system sans stack (`Pretendard`, `Inter`, `-apple-system`, 
 - table column labels
 - selected order number and inspector tab labels `주문 상세`, `상태 변경`, `감사 로그`
 
-Functional error, loading, empty, success, permission, and confirmation copy is an intentional necessity and must stay concise. Do not add claims, performance deltas, system-health marketing, fake pagination counts, or decorative badges.
+Functional error, loading, empty, success, permission, and confirmation copy must stay concise. Do not add performance claims, system-health marketing, fake pagination counts, or decorative badges.
 
 ## Components and interaction
 
@@ -63,9 +63,9 @@ Functional error, loading, empty, success, permission, and confirmation copy is 
 - Logout invalidates the server session.
 - Respect `prefers-reduced-motion`; motion is limited to drawer/timeline state changes and focus feedback.
 
-## Intentional differences from the image concept
+## Implementation decisions
 
-- Concept metrics and dates are illustrative; implementation uses the 10 PostgreSQL seed orders only.
-- Concept shows a seven-step fulfillment model; the implemented first version uses the verified five states `received`, `normalized`, `exception`, `ready`, `shipped`.
+- Metrics, dates, and activity entries come from the API.
+- The workflow uses five verified states: `received`, `normalized`, `exception`, `ready`, `shipped`.
 - Unimplemented navigation destinations are omitted or rendered as non-interactive context, never as dead buttons.
-- Pagination is omitted while the seeded dataset remains below 100 rows.
+- Pagination is omitted while list responses remain capped at 100 rows.

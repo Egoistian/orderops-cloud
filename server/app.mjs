@@ -8,13 +8,13 @@ const MUTATION_HEADER = "x-orderops-request";
 const DUMMY_PASSWORD_HASH = hashPassword(createSessionToken());
 const LOGIN_FAILURE_LIMIT = 8;
 const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const PUBLIC_DEMO_AUDIT_NOTE = "공개 데모에서 수행한 상태 변경";
-const DEFAULT_PUBLIC_DEMO_MUTATION_LIMITS = {
+const SHARED_ACCESS_AUDIT_NOTE = "공개 환경에서 수행한 상태 변경";
+const DEFAULT_SHARED_ACCESS_MUTATION_LIMITS = {
   sessionLimit: 30,
   ipLimit: 120,
   windowMs: 10 * 60 * 1000,
 };
-const DEFAULT_PUBLIC_DEMO_LOGIN_RESET_LIMITS = {
+const DEFAULT_SHARED_ACCESS_LOGIN_RESET_LIMITS = {
   limit: 10,
   windowMs: 10 * 60 * 1000,
 };
@@ -63,7 +63,7 @@ function createLoginFailureTracker() {
 
 function createFixedWindowTracker(limit, windowMs) {
   if (!Number.isInteger(limit) || limit < 1 || !Number.isInteger(windowMs) || windowMs < 1) {
-    throw new Error("Public demo rate limits must be positive integers.");
+    throw new Error("Shared access rate limits must be positive integers.");
   }
 
   const entries = new Map();
@@ -102,7 +102,7 @@ function createFixedWindowTracker(limit, windowMs) {
   };
 }
 
-function createPublicDemoMutationLimiter({ sessionLimit, ipLimit, windowMs }) {
+function createSharedAccessMutationLimiter({ sessionLimit, ipLimit, windowMs }) {
   const sessions = createFixedWindowTracker(sessionLimit, windowMs);
   const addresses = createFixedWindowTracker(ipLimit, windowMs);
 
@@ -115,8 +115,8 @@ function createPublicDemoMutationLimiter({ sessionLimit, ipLimit, windowMs }) {
       );
       if (retryAfterMs > 0) {
         const error = new WorkflowError(
-          "DEMO_MUTATION_RATE_LIMITED",
-          "공개 데모 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+          "SHARED_ACCESS_MUTATION_RATE_LIMITED",
+          "공유 접근 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
           429,
         );
         error.retryAfter = Math.max(1, Math.ceil(retryAfterMs / 1000));
@@ -265,14 +265,14 @@ function clearSessionCookie(production) {
     .join("; ");
 }
 
-function publicUser(user, publicDemoMode) {
+function publicUser(user, sharedAccessMode) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
     tenant: user.tenant,
-    publicDemoMode,
+    sharedAccessMode,
   };
 }
 
@@ -280,17 +280,17 @@ export function createApp({
   store,
   production = process.env.NODE_ENV === "production",
   secureCookies = production && process.env.SESSION_COOKIE_SECURE !== "false",
-  publicDemoMode = process.env.PUBLIC_DEMO_MODE === "true",
-  publicDemoMutationLimits = DEFAULT_PUBLIC_DEMO_MUTATION_LIMITS,
-  publicDemoLoginResetLimits = DEFAULT_PUBLIC_DEMO_LOGIN_RESET_LIMITS,
+  sharedAccessMode = process.env.SHARED_ACCESS_MODE === "true",
+  sharedAccessMutationLimits = DEFAULT_SHARED_ACCESS_MUTATION_LIMITS,
+  sharedAccessLoginResetLimits = DEFAULT_SHARED_ACCESS_LOGIN_RESET_LIMITS,
   staticDir,
 }) {
   const app = express();
   const loginFailures = createLoginFailureTracker();
-  const publicDemoMutations = createPublicDemoMutationLimiter(publicDemoMutationLimits);
-  const publicDemoLoginResets = createFixedWindowTracker(
-    publicDemoLoginResetLimits.limit,
-    publicDemoLoginResetLimits.windowMs,
+  const sharedAccessMutations = createSharedAccessMutationLimiter(sharedAccessMutationLimits);
+  const sharedAccessLoginResets = createFixedWindowTracker(
+    sharedAccessLoginResetLimits.limit,
+    sharedAccessLoginResetLimits.windowMs,
   );
   app.disable("x-powered-by");
   app.use(setSecurityHeaders);
@@ -316,9 +316,9 @@ export function createApp({
   app.get("/api/health", readiness);
   app.get("/api/health/ready", readiness);
 
-  app.get("/api/auth/demo-accounts", async (_request, response, next) => {
+  app.get("/api/auth/access-accounts", async (_request, response, next) => {
     try {
-      response.json({ accounts: await store.listDemoAccounts(), publicDemoMode });
+      response.json({ accounts: await store.listAccessAccounts(), sharedAccessMode });
     } catch (error) {
       next(error);
     }
@@ -355,19 +355,19 @@ export function createApp({
         password,
         loginUser?.password_hash || (await DUMMY_PASSWORD_HASH),
       );
-      if (!loginUser || !passwordMatches || (publicDemoMode && !loginUser.is_demo)) {
+      if (!loginUser || !passwordMatches || (sharedAccessMode && !loginUser.is_access_account)) {
         loginFailures.recordFailure(loginKey);
         throw new WorkflowError("LOGIN_FAILED", "로그인 정보를 확인해 주세요.", 401);
       }
       loginFailures.clear(loginKey);
-      if (publicDemoMode) {
+      if (sharedAccessMode) {
         consumeFixedWindow(
-          publicDemoLoginResets,
+          sharedAccessLoginResets,
           loginKey,
-          "DEMO_LOGIN_RATE_LIMITED",
-          "공개 데모 초기화 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+          "SHARED_ACCESS_LOGIN_RATE_LIMITED",
+          "공유 접근 초기화 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
         );
-        await store.resetDemoTenant(loginUser.tenant_id);
+        await store.resetAccessTenant(loginUser.tenant_id);
       }
 
       const previousToken = readCookie(request, SESSION_COOKIE);
@@ -387,7 +387,7 @@ export function createApp({
         },
       };
       response.setHeader("Set-Cookie", sessionCookie(token, secureCookies));
-      response.json({ user: publicUser(user, publicDemoMode), expiresAt });
+      response.json({ user: publicUser(user, sharedAccessMode), expiresAt });
     } catch (error) {
       next(error);
     }
@@ -422,13 +422,13 @@ export function createApp({
   });
 
   app.get("/api/auth/me", (request, response) => {
-    response.json({ user: publicUser(request.user, publicDemoMode) });
+    response.json({ user: publicUser(request.user, sharedAccessMode) });
   });
 
-  function requirePublicDemoMutationBudget(request, _response, next) {
-    if (!publicDemoMode) return next();
+  function requireSharedAccessMutationBudget(request, _response, next) {
+    if (!sharedAccessMode) return next();
     try {
-      publicDemoMutations.consume(
+      sharedAccessMutations.consume(
         request.sessionTokenHash,
         request.socket.remoteAddress || "unknown",
       );
@@ -474,7 +474,7 @@ export function createApp({
     "/api/orders/:orderId/status",
     requireTrustedMutation,
     requireJson,
-    requirePublicDemoMutationBudget,
+    requireSharedAccessMutationBudget,
     async (request, response, next) => {
       try {
         const { status, expectedVersion, note } = request.body ?? {};
@@ -497,8 +497,8 @@ export function createApp({
           actor: request.user,
           toStatus: status,
           expectedVersion,
-          note: publicDemoMode
-            ? PUBLIC_DEMO_AUDIT_NOTE
+          note: sharedAccessMode
+            ? SHARED_ACCESS_AUDIT_NOTE
             : typeof note === "string"
               ? note.trim()
               : "",

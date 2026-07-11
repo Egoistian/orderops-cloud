@@ -43,7 +43,7 @@ export function Sidebar({
       <section className="dataScope">
         <span>데이터 범위</span>
         <strong>{user.tenant.name}</strong>
-        <small>포트폴리오용 시드 데이터</small>
+        <small>회사별 PostgreSQL 주문 데이터</small>
         <dl>
           <div>
             <dt>역할</dt>

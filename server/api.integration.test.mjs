@@ -7,7 +7,7 @@ import { seedDatabase } from "./seed.mjs";
 let pool;
 let server;
 let baseUrl;
-const demoPassword = process.env.SEED_DEMO_PASSWORD || "orderops-demo-2026";
+const accessPassword = process.env.ACCESS_ACCOUNT_PASSWORD || "orderops-access-2026";
 const mutationHeader = { "x-orderops-request": "1" };
 
 before(async () => {
@@ -27,14 +27,16 @@ after(async () => {
 });
 
 async function login(tenantSlug, role) {
-  const tenantEmailSlug = tenantSlug.replace("-", "");
+  const tenantEmailDomain = tenantSlug === "seoul-fresh"
+    ? "seoulfresh.example"
+    : "busancraft.example";
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { ...mutationHeader, "content-type": "application/json" },
     body: JSON.stringify({
       tenantSlug,
-      email: `${role}@${tenantEmailSlug}.demo`,
-      password: demoPassword,
+      email: `${role}@${tenantEmailDomain}`,
+      password: accessPassword,
     }),
   });
   assert.equal(response.status, 200);
@@ -42,7 +44,7 @@ async function login(tenantSlug, role) {
   assert.match(cookie, /orderops_session=/);
   assert.match(cookie, /HttpOnly/i);
   assert.match(cookie, /SameSite=Strict/i);
-  assert.equal((await response.json()).user.publicDemoMode, false);
+  assert.equal((await response.json()).user.sharedAccessMode, false);
   return cookie.split(";")[0];
 }
 
@@ -65,8 +67,8 @@ test("상태 변경 요청은 같은 출처 표식이 없으면 인증 전에 �
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       tenantSlug: "seoul-fresh",
-      email: "admin@seoulfresh.demo",
-      password: demoPassword,
+      email: "admin@seoulfresh.example",
+      password: accessPassword,
     }),
   });
   assert.equal(response.status, 403);
@@ -79,7 +81,7 @@ test("반복되는 로그인 실패는 같은 계정과 접속 주소 기준으�
     headers: { ...mutationHeader, "content-type": "application/json" },
     body: JSON.stringify({
       tenantSlug: "seoul-fresh",
-      email: "missing@seoulfresh.demo",
+      email: "missing@seoulfresh.example",
       password: "wrong-password",
     }),
   });
@@ -117,6 +119,7 @@ test("운영 담당자의 상태 변경은 DB와 감사 로그에 함께 남는�
   assert.equal(audit[0].fromStatus, "ready");
   assert.equal(audit[0].toStatus, "shipped");
   assert.equal(audit[0].note, "통합 테스트");
+  assert.equal(audit[1].note, "초기 주문 상태 등록");
 });
 
 test("열람 전용 역할의 변경 요청은 서버에서 403으로 거부된다", async () => {
@@ -202,28 +205,28 @@ test("감사 이벤트는 일반 DB 작업으로 수정하거나 삭제할 수 �
   );
 });
 
-test("공개 데모 모드는 tenant만 초기화하고 입력 메모와 과도한 쓰기를 제한한다", async () => {
+test("공유 접근 모드는 tenant만 초기화하고 입력 메모와 과도한 쓰기를 제한한다", async () => {
   await seedDatabase(pool);
-  const publicApp = createApp({
+  const sharedAccessApp = createApp({
     store: createPostgresStore(pool),
     production: false,
-    publicDemoMode: true,
-    publicDemoMutationLimits: { sessionLimit: 2, ipLimit: 20, windowMs: 60_000 },
-    publicDemoLoginResetLimits: { limit: 2, windowMs: 60_000 },
+    sharedAccessMode: true,
+    sharedAccessMutationLimits: { sessionLimit: 2, ipLimit: 20, windowMs: 60_000 },
+    sharedAccessLoginResetLimits: { limit: 2, windowMs: 60_000 },
   });
-  const publicServer = publicApp.listen(0, "127.0.0.1");
-  await new Promise((resolve) => publicServer.once("listening", resolve));
-  const address = publicServer.address();
-  const publicBaseUrl = `http://127.0.0.1:${address.port}`;
+  const sharedAccessServer = sharedAccessApp.listen(0, "127.0.0.1");
+  await new Promise((resolve) => sharedAccessServer.once("listening", resolve));
+  const address = sharedAccessServer.address();
+  const sharedAccessBaseUrl = `http://127.0.0.1:${address.port}`;
 
-  async function publicLogin() {
-    const response = await fetch(`${publicBaseUrl}/api/auth/login`, {
+  async function sharedAccessLogin() {
+    const response = await fetch(`${sharedAccessBaseUrl}/api/auth/login`, {
       method: "POST",
       headers: { ...mutationHeader, "content-type": "application/json" },
       body: JSON.stringify({
         tenantSlug: "seoul-fresh",
-        email: "operator@seoulfresh.demo",
-        password: demoPassword,
+        email: "operator@seoulfresh.example",
+        password: accessPassword,
       }),
     });
     const body = await response.json();
@@ -235,24 +238,29 @@ test("공개 데모 모드는 tenant만 초기화하고 입력 메모와 과도�
   }
 
   try {
-    const accounts = await fetch(`${publicBaseUrl}/api/auth/demo-accounts`);
+    const accounts = await fetch(`${sharedAccessBaseUrl}/api/auth/access-accounts`);
     assert.equal(accounts.status, 200);
-    assert.equal((await accounts.json()).publicDemoMode, true);
+    const accountsBody = await accounts.json();
+    assert.equal(accountsBody.sharedAccessMode, true);
+    assert.equal(accountsBody.accounts.length, 6);
+    assert.ok(accountsBody.accounts.every(({ email }) => (
+      email.endsWith("@seoulfresh.example") || email.endsWith("@busancraft.example")
+    )));
 
-    const firstLogin = await publicLogin();
+    const firstLogin = await sharedAccessLogin();
     assert.equal(firstLogin.response.status, 200);
-    assert.equal(firstLogin.body.user.publicDemoMode, true);
+    assert.equal(firstLogin.body.user.sharedAccessMode, true);
     assert.match(firstLogin.cookie, /orderops_session=/);
 
-    const firstTransition = await fetch(`${publicBaseUrl}/api/orders/sf-1001/status`, {
+    const firstTransition = await fetch(`${sharedAccessBaseUrl}/api/orders/sf-1001/status`, {
       method: "PATCH",
       headers: { cookie: firstLogin.cookie, ...mutationHeader, "content-type": "application/json" },
       body: JSON.stringify({ status: "shipped", expectedVersion: 3, note: "저장되면 안 되는 외부 입력" }),
     });
     assert.equal(firstTransition.status, 200);
-    assert.equal((await firstTransition.json()).audit.note, "공개 데모에서 수행한 상태 변경");
+    assert.equal((await firstTransition.json()).audit.note, "공개 환경에서 수행한 상태 변경");
 
-    const secondLogin = await publicLogin();
+    const secondLogin = await sharedAccessLogin();
     assert.equal(secondLogin.response.status, 200);
 
     const preserved = await pool.query(
@@ -264,35 +272,35 @@ test("공개 데모 모드는 tenant만 초기화하고 입력 메모와 과도�
     );
     assert.deepEqual(preserved.rows[0], { users: 3, sessions: 2, status: "ready" });
 
-    const originalSession = await fetch(`${publicBaseUrl}/api/auth/me`, {
+    const originalSession = await fetch(`${sharedAccessBaseUrl}/api/auth/me`, {
       headers: { cookie: firstLogin.cookie },
     });
     assert.equal(originalSession.status, 200);
-    assert.equal((await originalSession.json()).user.publicDemoMode, true);
+    assert.equal((await originalSession.json()).user.sharedAccessMode, true);
 
-    const secondTransition = await fetch(`${publicBaseUrl}/api/orders/sf-1003/status`, {
+    const secondTransition = await fetch(`${sharedAccessBaseUrl}/api/orders/sf-1003/status`, {
       method: "PATCH",
       headers: { cookie: firstLogin.cookie, ...mutationHeader, "content-type": "application/json" },
       body: JSON.stringify({ status: "ready", expectedVersion: 1 }),
     });
     assert.equal(secondTransition.status, 200);
 
-    const limitedMutation = await fetch(`${publicBaseUrl}/api/orders/sf-1003/status`, {
+    const limitedMutation = await fetch(`${sharedAccessBaseUrl}/api/orders/sf-1003/status`, {
       method: "PATCH",
       headers: { cookie: firstLogin.cookie, ...mutationHeader, "content-type": "application/json" },
       body: JSON.stringify({ status: "shipped", expectedVersion: 2 }),
     });
     assert.equal(limitedMutation.status, 429);
-    assert.equal((await limitedMutation.json()).error.code, "DEMO_MUTATION_RATE_LIMITED");
+    assert.equal((await limitedMutation.json()).error.code, "SHARED_ACCESS_MUTATION_RATE_LIMITED");
     assert.ok(Number(limitedMutation.headers.get("retry-after")) > 0);
 
-    const limitedLogin = await publicLogin();
+    const limitedLogin = await sharedAccessLogin();
     assert.equal(limitedLogin.response.status, 429);
-    assert.equal(limitedLogin.body.error.code, "DEMO_LOGIN_RATE_LIMITED");
+    assert.equal(limitedLogin.body.error.code, "SHARED_ACCESS_LOGIN_RATE_LIMITED");
     assert.ok(Number(limitedLogin.response.headers.get("retry-after")) > 0);
   } finally {
     await new Promise((resolve, reject) =>
-      publicServer.close((error) => (error ? reject(error) : resolve())),
+      sharedAccessServer.close((error) => (error ? reject(error) : resolve())),
     );
     await seedDatabase(pool);
   }

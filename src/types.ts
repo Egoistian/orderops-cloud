@@ -14,10 +14,10 @@ export type User = {
   email: string;
   role: UserRole;
   tenant: Tenant;
-  publicDemoMode: boolean;
+  sharedAccessMode: boolean;
 };
 
-export type DemoAccount = {
+export type AccessAccount = {
   email: string;
   name: string;
   role: UserRole;

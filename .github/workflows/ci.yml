@@ -28,7 +28,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://orderops:orderops-ci-only@127.0.0.1:5432/orderops_cloud_test
-      SEED_DEMO_PASSWORD: orderops-ci-demo-password
+      ACCESS_ACCOUNT_PASSWORD: orderops-ci-access-password
       NODE_ENV: test
 
     steps:
@@ -47,7 +47,7 @@ jobs:
       - name: Install Chromium for browser tests
         run: npx playwright install --with-deps chromium
 
-      - name: Create schema and seed synthetic demo data
+      - name: Create schema and initial data
         run: npm run db:setup
 
       - name: Run unit tests

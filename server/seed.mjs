@@ -1,8 +1,8 @@
 import { hashPassword } from "./security.mjs";
 
 const tenants = [
-  { id: "tenant-seoul-fresh", slug: "seoul-fresh", name: "서울프레시 물류" },
-  { id: "tenant-busan-craft", slug: "busan-craft", name: "부산크래프트 상점" },
+  { id: "tenant-seoul-fresh", slug: "seoul-fresh", name: "서울프레시 물류", emailDomain: "seoulfresh.example" },
+  { id: "tenant-busan-craft", slug: "busan-craft", name: "부산크래프트 상점", emailDomain: "busancraft.example" },
 ];
 
 const roles = [
@@ -24,14 +24,14 @@ const orders = [
   ["bc-2004", "tenant-busan-craft", "BC-20260710-038", "2026-07-10T16:16:00+09:00", "오*연", "010-****-6731", "울산 남구", "패브릭 포스터", 3, "일반택배", "low", "shipped", [], ["수량 숫자 형식 정리", "영남 일반택배 라인 배정"], "울산 소형허브", "LOTTE-YEONGNAM-2", 51000, 4],
 ];
 
-async function lockDemoTenant(client, tenantId) {
+async function lockAccessTenant(client, tenantId) {
   await client.query(
-    "select pg_advisory_xact_lock(hashtext('orderops-public-demo'), hashtext($1::text))",
+    "select pg_advisory_xact_lock(hashtext('orderops-shared-access'), hashtext($1::text))",
     [tenantId],
   );
 }
 
-async function insertDemoOrders(client, tenant) {
+async function insertInitialOrders(client, tenant) {
   const tenantOrders = orders.filter((order) => order[1] === tenant.id);
   for (const order of tenantOrders) {
     await client.query(
@@ -45,7 +45,7 @@ async function insertDemoOrders(client, tenant) {
     await client.query(
       `insert into audit_events
         (tenant_id, order_id, actor_user_id, actor_name, actor_role, action, from_status, to_status, note, created_at)
-       values ($1, $2, $3, $4, 'admin', 'order.seeded', null, $5, '포트폴리오 데모 시드 데이터 생성', $6)`,
+       values ($1, $2, $3, $4, 'admin', 'order.initialized', null, $5, '초기 주문 상태 등록', $6)`,
       [
         order[1],
         order[0],
@@ -58,18 +58,18 @@ async function insertDemoOrders(client, tenant) {
   }
 }
 
-export async function resetDemoTenantData(pool, tenantId) {
+export async function resetAccessTenantData(pool, tenantId) {
   const tenant = tenants.find((candidate) => candidate.id === tenantId);
-  if (!tenant) throw new Error("공개 데모 초기화를 지원하지 않는 tenant입니다.");
+  if (!tenant) throw new Error("공유 접근 초기화를 지원하지 않는 tenant입니다.");
 
   const client = await pool.connect();
   try {
     await client.query("begin");
-    await lockDemoTenant(client, tenantId);
+    await lockAccessTenant(client, tenantId);
     await client.query("select set_config('orderops.audit_maintenance', 'on', true)");
     await client.query("delete from audit_events where tenant_id = $1", [tenantId]);
     await client.query("delete from orders where tenant_id = $1", [tenantId]);
-    await insertDemoOrders(client, tenant);
+    await insertInitialOrders(client, tenant);
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
@@ -79,7 +79,7 @@ export async function resetDemoTenantData(pool, tenantId) {
   }
 }
 
-export async function seedDatabase(pool, password = process.env.SEED_DEMO_PASSWORD || "orderops-demo-2026") {
+export async function seedDatabase(pool, password = process.env.ACCESS_ACCOUNT_PASSWORD || "orderops-access-2026") {
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -97,16 +97,16 @@ export async function seedDatabase(pool, password = process.env.SEED_DEMO_PASSWO
     for (const tenant of tenants) {
       for (const role of roles) {
         const id = `${tenant.slug}-${role.role}`;
-        const email = `${role.role}@${tenant.slug.replace("-", "")}.demo`;
+        const email = `${role.role}@${tenant.emailDomain}`;
         await client.query(
-          `insert into users (id, tenant_id, email, name, role, password_hash, is_demo)
+          `insert into users (id, tenant_id, email, name, role, password_hash, is_access_account)
            values ($1, $2, $3, $4, $5, $6, true)`,
           [id, tenant.id, email, `${tenant.name} ${role.label}`, role.role, passwordHash],
         );
       }
     }
 
-    for (const tenant of tenants) await insertDemoOrders(client, tenant);
+    for (const tenant of tenants) await insertInitialOrders(client, tenant);
 
     await client.query("commit");
   } catch (error) {

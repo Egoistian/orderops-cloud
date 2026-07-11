@@ -2,12 +2,11 @@ openapi: 3.1.0
 info:
   title: OrderOps Cloud API
   version: 1.0.0
-  summary: Synthetic multi-tenant order-operations portfolio API
+  summary: Multi-tenant order-operations API
   description: |
-    API contract for the OrderOps Cloud personal portfolio project. Every
-    company, user, order, amount, and audit event in the demo seed is synthetic.
-    Protected endpoints derive tenant and role context from an HttpOnly session
-    cookie; callers do not submit a tenant ID for domain operations.
+    API contract for OrderOps Cloud. Protected endpoints derive tenant and role
+    context from an HttpOnly session cookie; callers do not submit a tenant ID
+    for domain operations.
   license:
     name: UNLICENSED
     identifier: UNLICENSED
@@ -20,7 +19,7 @@ tags:
   - name: Health
     description: API and database readiness.
   - name: Authentication
-    description: Synthetic demo accounts and cookie-session lifecycle.
+    description: Access accounts and cookie-session lifecycle.
   - name: Operations
     description: Tenant-scoped metrics, order reads, and workflow transitions.
   - name: Audit
@@ -79,32 +78,45 @@ paths:
         "503":
           $ref: "#/components/responses/DatabaseUnavailable"
 
-  /api/auth/demo-accounts:
+  /api/auth/access-accounts:
     get:
       tags: [Authentication]
-      operationId: listDemoAccounts
-      summary: List synthetic accounts offered by the portfolio login screen
+      operationId: listAccessAccounts
+      summary: List role-based accounts offered by the login screen
       description: |
-        This intentionally public endpoint returns only synthetic demo account
-        metadata. It never returns a password or password hash. The top-level
-        flag tells the login screen whether shared public-demo safeguards are active.
+        This public endpoint returns account role and tenant metadata. It never
+        returns a password or password hash. The top-level flag tells the login
+        screen whether shared-access safeguards are active.
       security: []
       responses:
         "200":
-          description: Synthetic demo accounts grouped by their tenant metadata.
+          description: Access accounts grouped by tenant metadata.
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: false
-                required: [accounts, publicDemoMode]
+                required: [accounts, sharedAccessMode]
                 properties:
                   accounts:
                     type: array
                     items:
-                      $ref: "#/components/schemas/DemoAccount"
-                  publicDemoMode:
+                      $ref: "#/components/schemas/AccessAccount"
+                  sharedAccessMode:
                     type: boolean
+              example:
+                accounts:
+                  - email: operator@seoulfresh.example
+                    name: 서울프레시 물류 운영 담당자
+                    role: operator
+                    tenantSlug: seoul-fresh
+                    tenantName: 서울프레시 물류
+                  - email: viewer@busancraft.example
+                    name: 부산크래프트 상점 열람 전용
+                    role: viewer
+                    tenantSlug: busan-craft
+                    tenantName: 부산크래프트 상점
+                sharedAccessMode: true
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -112,10 +124,10 @@ paths:
     post:
       tags: [Authentication]
       operationId: login
-      summary: Create an eight-hour demo session
+      summary: Create an eight-hour session
       description: |
         In the default local mode, login only creates a session. When
-        `PUBLIC_DEMO_MODE=true`, a successful synthetic demo login first resets
+        `SHARED_ACCESS_MODE=true`, a successful access-account login first resets
         that tenant's orders and audit events while preserving users and existing
         sessions. Excessive successful login/resets return `429`.
       security: []
@@ -129,8 +141,8 @@ paths:
               $ref: "#/components/schemas/LoginRequest"
             example:
               tenantSlug: seoul-fresh
-              email: operator@seoulfresh.demo
-              password: orderops-demo-2026
+              email: operator@seoulfresh.example
+              password: orderops-access-2026
       responses:
         "200":
           description: Login succeeded and the response set an HttpOnly session cookie.
@@ -163,7 +175,7 @@ paths:
                       code: LOGIN_FIELDS_INVALID
                       message: 로그인 입력값의 길이를 확인해 주세요.
         "401":
-          description: Tenant, email, or password did not match an active demo user.
+          description: Tenant, email, or password did not match an active user.
           content:
             application/json:
               schema:
@@ -179,7 +191,7 @@ paths:
         "415":
           $ref: "#/components/responses/JsonRequired"
         "429":
-          description: Failed-login or successful public-demo reset limit was exhausted.
+          description: Failed-login or shared-access login/reset limit was exhausted.
           headers:
             Retry-After:
               schema:
@@ -189,6 +201,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                failedLoginLimit:
+                  value:
+                    error:
+                      code: LOGIN_RATE_LIMITED
+                      message: 로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.
+                sharedAccessLimit:
+                  value:
+                    error:
+                      code: SHARED_ACCESS_LOGIN_RATE_LIMITED
+                      message: 공유 접근 초기화 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -355,8 +378,8 @@ paths:
       description: |
         The API locks the tenant-scoped order row, checks `expectedVersion`,
         validates the user's role and workflow transition, then updates the order
-        and inserts the audit event in one PostgreSQL transaction. Shared public
-        demo mode replaces user-provided notes with a fixed safe note and applies
+        and inserts the audit event in one PostgreSQL transaction. Shared access
+        mode replaces user-provided notes with a fixed audit note and applies
         per-instance session and socket-address mutation limits.
       parameters:
         - $ref: "#/components/parameters/OrderId"
@@ -451,7 +474,7 @@ paths:
         "415":
           $ref: "#/components/responses/JsonRequired"
         "429":
-          description: The public-demo session or socket-address mutation budget was exhausted.
+          description: The shared-access session or socket-address mutation budget was exhausted.
           headers:
             Retry-After:
               schema:
@@ -463,8 +486,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error:
-                  code: DEMO_MUTATION_RATE_LIMITED
-                  message: 공개 데모 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.
+                  code: SHARED_ACCESS_MUTATION_RATE_LIMITED
+                  message: 공유 접근 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -491,7 +514,7 @@ components:
       name: orderId
       in: path
       required: true
-      description: Synthetic order identifier scoped by the session tenant.
+      description: Order identifier scoped by the session tenant.
       schema:
         type: string
         minLength: 1
@@ -592,7 +615,7 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, name, email, role, tenant, publicDemoMode]
+      required: [id, name, email, role, tenant, sharedAccessMode]
       properties:
         id:
           type: string
@@ -605,11 +628,11 @@ components:
           $ref: "#/components/schemas/Role"
         tenant:
           $ref: "#/components/schemas/Tenant"
-        publicDemoMode:
+        sharedAccessMode:
           type: boolean
-          description: True only when shared public-demo reset and input safeguards are active.
+          description: True when shared-access reset and input safeguards are active.
 
-    DemoAccount:
+    AccessAccount:
       type: object
       additionalProperties: false
       required: [email, name, role, tenantSlug, tenantName]
@@ -805,7 +828,7 @@ components:
         note:
           type: string
           maxLength: 200
-          description: Replaced with a fixed safe value when publicDemoMode is true.
+          description: Replaced with `공개 환경에서 수행한 상태 변경` when sharedAccessMode is true.
 
     LivenessResponse:
       type: object

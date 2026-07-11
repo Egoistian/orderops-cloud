@@ -1,4 +1,4 @@
-import type { AuditEvent, DemoAccount, Metrics, Order, OrderStatus, User } from "./types";
+import type { AccessAccount, AuditEvent, Metrics, Order, OrderStatus, User } from "./types";
 
 type ApiErrorBody = {
   error?: {
@@ -66,8 +66,8 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 }
 
-export async function getDemoAccounts(): Promise<DemoAccount[]> {
-  const response = await request<{ accounts: DemoAccount[] }>("/api/auth/demo-accounts");
+export async function getAccessAccounts(): Promise<AccessAccount[]> {
+  const response = await request<{ accounts: AccessAccount[] }>("/api/auth/access-accounts");
   return response.accounts;
 }
 

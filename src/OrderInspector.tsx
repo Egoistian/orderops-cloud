@@ -166,10 +166,10 @@ export function OrderInspector({
                       </button>
                     ))}
                   </div>
-                  {user.publicDemoMode ? (
-                    <div className="publicDemoNote">
+                  {user.sharedAccessMode ? (
+                    <div className="sharedAccessNote">
                       <ShieldCheck size={16} />
-                      <span>공개 데모에서는 안전한 고정 사유로 기록됩니다.</span>
+                      <span>공유 환경에서는 표준 변경 사유로 기록됩니다.</span>
                     </div>
                   ) : (
                     <label className="transitionNote">

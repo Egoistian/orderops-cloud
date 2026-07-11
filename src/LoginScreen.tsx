@@ -14,8 +14,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { login } from "./api";
-import { Brand, DEMO_PASSWORD, ROLE_META, errorMessage } from "./orderUi";
-import type { DemoAccount, User, UserRole } from "./types";
+import { ACCESS_ACCOUNT_PASSWORD, Brand, ROLE_META, errorMessage } from "./orderUi";
+import type { AccessAccount, User, UserRole } from "./types";
 
 export function LoginScreen({
   accounts,
@@ -23,7 +23,7 @@ export function LoginScreen({
   onRetry,
   onAuthenticated,
 }: {
-  accounts: DemoAccount[];
+  accounts: AccessAccount[];
   connectionError: string;
   onRetry: () => void;
   onAuthenticated: (user: User) => void;
@@ -37,7 +37,7 @@ export function LoginScreen({
   );
   const [tenantSlug, setTenantSlug] = useState(tenants[0]?.slug ?? "");
   const [role, setRole] = useState<UserRole>("admin");
-  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [password, setPassword] = useState(ACCESS_ACCOUNT_PASSWORD);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -69,12 +69,12 @@ export function LoginScreen({
 
   return (
     <main className="loginPage">
-      <section className="loginIntro" aria-label="데모 안내">
+      <section className="loginIntro" aria-label="로그인 안내">
         <Brand />
         <p>
-          주문 상태와 권한, 감사 이력을 실제 API로 확인하는 포트폴리오용 합성 데모입니다.
+          주문 상태와 역할 권한, 감사 이력을 한 화면에서 관리합니다.
           <br />
-          모든 정보는 PostgreSQL 시드 데이터이며 실제 운영 데이터가 아닙니다.
+          회사별 주문 흐름을 분리하고 변경 과정을 추적합니다.
         </p>
         <ul>
           <li>
@@ -91,9 +91,9 @@ export function LoginScreen({
 
       <section className="loginPanel" aria-labelledby="loginTitle">
         <div className="loginPanelHeading">
-          <span className="demoBadge">DEMO · 시드 데이터</span>
+          <span className="contextBadge">ROLE-BASED ACCESS</span>
           <h1 id="loginTitle">OrderOps Cloud</h1>
-          <p>포트폴리오 데모에 로그인</p>
+          <p>운영 워크스페이스에 로그인</p>
         </div>
 
         {connectionError && !accounts.length ? (
@@ -178,14 +178,13 @@ export function LoginScreen({
 
             <button className="primaryButton loginSubmit" type="submit" disabled={!account || submitting}>
               {submitting ? <LoaderCircle className="spin" size={17} /> : <Cloud size={17} />}
-              {submitting ? "로그인 중" : "데모 시작"}
+              {submitting ? "로그인 중" : "주문 워크스페이스 열기"}
             </button>
           </form>
         )}
 
-        <p className="seedDisclaimer">
-          <span className="demoBadge">DEMO</span>
-          선택한 공개 데모 계정으로만 로그인합니다. 실제 고객·주문 정보는 포함하지 않습니다.
+        <p className="accessContext">
+          접속한 역할의 권한 범위가 모든 화면과 API에 동일하게 적용됩니다.
         </p>
       </section>
     </main>

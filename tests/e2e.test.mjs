@@ -12,7 +12,7 @@ import { createPool, DEFAULT_DATABASE_URL } from "../server/database.mjs";
 import { seedDatabase } from "../server/seed.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const demoPassword = process.env.SEED_DEMO_PASSWORD || "orderops-demo-2026";
+const accessPassword = process.env.ACCESS_ACCOUNT_PASSWORD || "orderops-access-2026";
 const activeContexts = new Set();
 
 let browser;
@@ -120,8 +120,8 @@ async function loginAs(page, roleName) {
   await page.getByRole("heading", { name: "OrderOps Cloud" }).waitFor();
   await page.getByLabel("테넌트 선택").selectOption("seoul-fresh");
   await page.getByRole("button", { name: new RegExp(roleName) }).click();
-  await page.getByLabel("비밀번호", { exact: true }).fill(demoPassword);
-  await page.getByRole("button", { name: "데모 시작" }).click();
+  await page.getByLabel("비밀번호", { exact: true }).fill(accessPassword);
+  await page.getByRole("button", { name: "주문 워크스페이스 열기" }).click();
   await page.getByRole("heading", { name: "주문 관리" }).waitFor();
   await page.getByRole("row", { name: /SF-20260711-001/ }).waitFor();
 }
@@ -162,7 +162,7 @@ before(async () => {
   pool = createPool(isolatedDatabaseUrl);
   const schema = await readFile(path.join(root, "server", "schema.sql"), "utf8");
   await pool.query(schema);
-  await seedDatabase(pool, demoPassword);
+  await seedDatabase(pool, accessPassword);
 
   const port = await reservePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -174,8 +174,8 @@ before(async () => {
       PORT: String(port),
       NODE_ENV: "production",
       SESSION_COOKIE_SECURE: "false",
-      PUBLIC_DEMO_MODE: "false",
-      SEED_DEMO_PASSWORD: demoPassword,
+      SHARED_ACCESS_MODE: "false",
+      ACCESS_ACCOUNT_PASSWORD: accessPassword,
       DATABASE_URL: isolatedDatabaseUrl,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -192,7 +192,7 @@ before(async () => {
 
 beforeEach(async () => {
   // Every browser case starts from the same deterministic orders and no sessions.
-  await seedDatabase(pool, demoPassword);
+  await seedDatabase(pool, accessPassword);
 });
 
 afterEach(async () => {
@@ -201,7 +201,7 @@ afterEach(async () => {
     await context.close();
   }));
   // Restore even after a failed assertion so no state leaks into the next case.
-  await seedDatabase(pool, demoPassword);
+  await seedDatabase(pool, accessPassword);
 });
 
 after(async () => {

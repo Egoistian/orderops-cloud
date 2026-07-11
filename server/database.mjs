@@ -1,10 +1,10 @@
 import pg from "pg";
-import { resetDemoTenantData } from "./seed.mjs";
+import { resetAccessTenantData } from "./seed.mjs";
 import { assertTransitionAllowed, WorkflowError } from "./workflow.mjs";
 
 const { Pool } = pg;
 
-export const DEFAULT_DATABASE_URL = "postgresql://localhost/orderops_cloud_portfolio";
+export const DEFAULT_DATABASE_URL = "postgresql://localhost/orderops_cloud";
 
 export function createPool(databaseUrl = process.env.DATABASE_URL || DEFAULT_DATABASE_URL) {
   const serverless = process.env.VERCEL === "1";
@@ -121,12 +121,12 @@ export function createPostgresStore(pool) {
       return result.rowCount;
     },
 
-    async listDemoAccounts() {
+    async listAccessAccounts() {
       const result = await pool.query(
         `select u.email, u.name, u.role, t.slug as tenant_slug, t.name as tenant_name
            from users u
            join tenants t on t.id = u.tenant_id
-          where u.is_demo = true and u.active = true
+          where u.is_access_account = true and u.active = true
           order by t.name, case u.role when 'admin' then 1 when 'operator' then 2 else 3 end`,
       );
       return result.rows.map((row) => ({
@@ -138,8 +138,8 @@ export function createPostgresStore(pool) {
       }));
     },
 
-    async resetDemoTenant(tenantId) {
-      await resetDemoTenantData(pool, tenantId);
+    async resetAccessTenant(tenantId) {
+      await resetAccessTenantData(pool, tenantId);
     },
 
     async listOrders(tenantId, filters = {}) {
@@ -233,7 +233,7 @@ export function createPostgresStore(pool) {
       try {
         await client.query("begin");
         await client.query(
-          "select pg_advisory_xact_lock(hashtext('orderops-public-demo'), hashtext($1::text))",
+          "select pg_advisory_xact_lock(hashtext('orderops-shared-access'), hashtext($1::text))",
           [tenantId],
         );
         const selected = await client.query(

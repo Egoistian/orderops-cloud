@@ -13,11 +13,40 @@ create table if not exists users (
   role text not null check (role in ('admin', 'operator', 'viewer')),
   password_hash text not null,
   active boolean not null default true,
-  is_demo boolean not null default false,
+  is_access_account boolean not null default false,
   created_at timestamptz not null default now(),
   unique (tenant_id, email),
   unique (id, tenant_id)
 );
+
+alter table users add column if not exists is_access_account boolean not null default false;
+
+do $$
+begin
+  if exists (
+    select 1
+      from information_schema.columns
+     where table_schema = current_schema()
+       and table_name = 'users'
+       and column_name = 'is_demo'
+  ) then
+    update users set is_access_account = is_demo where is_demo = true;
+    alter table users drop column is_demo;
+  end if;
+end
+$$;
+
+update users
+   set email = split_part(email, '@', 1) || '@seoulfresh.example'
+ where tenant_id = 'tenant-seoul-fresh'
+   and is_access_account = true
+   and email not like '%@seoulfresh.example';
+
+update users
+   set email = split_part(email, '@', 1) || '@busancraft.example'
+ where tenant_id = 'tenant-busan-craft'
+   and is_access_account = true
+   and email not like '%@busancraft.example';
 
 create table if not exists sessions (
   id bigserial primary key,

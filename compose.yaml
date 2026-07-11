@@ -24,7 +24,7 @@ services:
       target: runtime
     environment:
       DATABASE_URL: postgresql://orderops:${POSTGRES_PASSWORD:-orderops-local-only}@postgres:5432/orderops_cloud
-      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-orderops-demo-2026}
+      ACCESS_ACCOUNT_PASSWORD: ${ACCESS_ACCOUNT_PASSWORD:-orderops-access-2026}
     command: ["npm", "run", "db:setup"]
     depends_on:
       postgres:
@@ -40,7 +40,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8787
       NODE_ENV: production
-      # This Compose file is an HTTP-only local demo. Remove this override behind HTTPS.
+      # This Compose environment uses HTTP locally. Remove this override behind HTTPS.
       SESSION_COOKIE_SECURE: "false"
     ports:
       - "${APP_PORT:-8787}:8787"

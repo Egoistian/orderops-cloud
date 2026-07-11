@@ -9,7 +9,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { ApiError, getCurrentUser, getDemoAccounts, getMetrics, getOrders, logout } from "./api";
+import { ApiError, getAccessAccounts, getCurrentUser, getMetrics, getOrders, logout } from "./api";
 import { LoginScreen } from "./LoginScreen";
 import { OrderInspector } from "./OrderInspector";
 import { OrdersTable } from "./OrdersTable";
@@ -24,12 +24,12 @@ import {
   isAbortError,
 } from "./orderUi";
 import type { InspectorTab } from "./orderUi";
-import type { DemoAccount, Metrics, Order, OrderStatus, User } from "./types";
+import type { AccessAccount, Metrics, Order, OrderStatus, User } from "./types";
 
 export default function App() {
   const [phase, setPhase] = useState<"checking" | "login" | "dashboard">("checking");
   const [user, setUser] = useState<User | null>(null);
-  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
+  const [accessAccounts, setAccessAccounts] = useState<AccessAccount[]>([]);
   const [sessionError, setSessionError] = useState("");
   const [bootVersion, setBootVersion] = useState(0);
 
@@ -63,9 +63,9 @@ export default function App() {
           setPhase("dashboard");
           return;
         }
-        const accounts = await getDemoAccounts();
+        const accounts = await getAccessAccounts();
         if (!active) return;
-        setDemoAccounts(accounts);
+        setAccessAccounts(accounts);
         setPhase("login");
       } catch (error) {
         if (!active) return;
@@ -87,7 +87,7 @@ export default function App() {
     setSelectedId(null);
     setSessionError(message);
     setPhase("login");
-    void getDemoAccounts().then(setDemoAccounts).catch(() => undefined);
+    void getAccessAccounts().then(setAccessAccounts).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -186,7 +186,7 @@ export default function App() {
       setOrders([]);
       setSelectedId(null);
       setPhase("login");
-      if (!demoAccounts.length) setDemoAccounts(await getDemoAccounts());
+      if (!accessAccounts.length) setAccessAccounts(await getAccessAccounts());
     } catch (error) {
       setNotice(errorMessage(error));
     }
@@ -197,7 +197,7 @@ export default function App() {
   if (phase === "login" || !user) {
     return (
       <LoginScreen
-        accounts={demoAccounts}
+        accounts={accessAccounts}
         connectionError={sessionError}
         onRetry={() => setBootVersion((version) => version + 1)}
         onAuthenticated={(nextUser) => {
@@ -232,7 +232,7 @@ export default function App() {
             <span className="roleContext">
               역할 <strong>{ROLE_META[user.role].label}</strong>
             </span>
-            <span className="demoBadge">DEMO · 시드 데이터</span>
+            <span className="contextBadge">ROLE-BASED ACCESS</span>
             <button className="iconTextButton" type="button" onClick={() => void handleLogout()}>
               <LogOut size={16} aria-hidden="true" />
               로그아웃
@@ -244,7 +244,7 @@ export default function App() {
           <div className="pageHeading">
             <div>
               <h1 id="pageTitle">주문 관리</h1>
-              <p>{user.tenant.name}의 시드 주문을 조회하고 허용된 상태만 변경합니다.</p>
+              <p>{user.tenant.name}의 주문을 조회하고 허용된 상태만 변경합니다.</p>
             </div>
             <button className="secondaryButton" type="button" onClick={() => refreshData()}>
               <RefreshCw size={16} aria-hidden="true" />

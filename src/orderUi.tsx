@@ -1,7 +1,7 @@
 import { Cloud } from "lucide-react";
 import type { OrderStatus, UserRole } from "./types";
 
-export const DEMO_PASSWORD = "orderops-demo-2026";
+export const ACCESS_ACCOUNT_PASSWORD = "orderops-access-2026";
 
 export const ORDER_STATUSES: OrderStatus[] = ["received", "normalized", "exception", "ready", "shipped"];
 
