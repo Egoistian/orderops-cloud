@@ -517,6 +517,14 @@ export function createApp({
   );
 
   if (staticDir) {
+    app.use((request, response, next) => {
+      const pathname = request.originalUrl.split("?", 1)[0];
+      if (request.method === "GET" && pathname === "/case-study/") {
+        response.redirect(302, "/case-study");
+        return;
+      }
+      next();
+    });
     app.use(express.static(staticDir, { dotfiles: "ignore", index: false }));
     app.use((request, response, next) => {
       if (request.method !== "GET" || request.path.startsWith("/api")) return next();

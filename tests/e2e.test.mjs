@@ -215,6 +215,35 @@ after(async () => {
   if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
 }, { timeout: 30_000 });
 
+test("구축 사례 페이지는 제품 API 없이 모든 이미지와 모바일 레이아웃을 제공한다", {
+  concurrency: false,
+  timeout: 30_000,
+}, async () => {
+  const { page, browserIssues, networkIssues } = await createPage({ width: 390, height: 844 });
+  const apiRequests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) apiRequests.push(url.pathname);
+  });
+
+  const response = await page.goto(`${baseUrl}/case-study/`, { waitUntil: "networkidle" });
+  assert.equal(response.status(), 200);
+  assert.equal(new URL(page.url()).pathname, "/case-study");
+  await page.getByRole("heading", { name: /주문이 움직일 때마다/ }).waitFor();
+
+  const images = page.locator("main img");
+  assert.ok(await images.count() >= 8, "구축 사례에 충분한 제품 이미지가 있어야 한다");
+  const naturalWidths = await images.evaluateAll((elements) =>
+    elements.map((element) => element instanceof HTMLImageElement ? element.naturalWidth : 0),
+  );
+  assert.ok(naturalWidths.every((width) => width > 0), `이미지 로드 실패: ${JSON.stringify(naturalWidths)}`);
+  await assertNoDocumentOverflow(page, "mobile case study");
+
+  assert.deepEqual(apiRequests, []);
+  assert.deepEqual(browserIssues, []);
+  assert.deepEqual(networkIssues, []);
+});
+
 test("운영 담당자 상태 변경은 감사 로그에 남고 열람 전용 역할은 변경할 수 없다", {
   concurrency: false,
   timeout: 30_000,

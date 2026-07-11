@@ -1,6 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/case-study",
+      "destination": "/index.html"
+    }
+  ],
   "functions": {
     "api/[...path].mjs": {
       "maxDuration": 10

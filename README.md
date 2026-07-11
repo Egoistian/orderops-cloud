@@ -4,7 +4,7 @@
 
 회사별 주문을 한곳에서 조회하고, 역할 권한에 따라 상태를 변경하며, 모든 변경 과정을 감사 이력으로 남기는 멀티테넌트 주문 운영 시스템입니다.
 
-![OrderOps Cloud dashboard](docs/images/orderops-cloud-dashboard.jpg)
+![OrderOps Cloud 구축 사례](docs/images/orderops-cloud-case-study-cover.jpg)
 
 ## 핵심 업무 흐름
 
@@ -24,6 +24,8 @@
 모바일 화면도 같은 API와 권한 규칙을 사용합니다.
 
 <img src="docs/images/orderops-cloud-mobile.jpg" alt="OrderOps Cloud mobile dashboard" width="390" />
+
+앱을 실행한 뒤 [전체 구축 사례 페이지](http://localhost:8787/case-study)에서 로그인부터 예외 검토, 상태 변경, 감사 이력, 역할 권한, 회사별 데이터 분리까지 이어지는 제품 화면을 확인할 수 있습니다.
 
 ## 구현 범위
 
