@@ -1,0 +1,71 @@
+name: orderops-cloud
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orderops_cloud
+      POSTGRES_USER: orderops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderops-local-only}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - orderops-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderops -d orderops_cloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  db-setup:
+    build:
+      context: .
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql://orderops:${POSTGRES_PASSWORD:-orderops-local-only}@postgres:5432/orderops_cloud
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-orderops-demo-2026}
+    command: ["npm", "run", "db:setup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql://orderops:${POSTGRES_PASSWORD:-orderops-local-only}@postgres:5432/orderops_cloud
+      HOST: 0.0.0.0
+      PORT: 8787
+      NODE_ENV: production
+      # This Compose file is an HTTP-only local demo. Remove this override behind HTTPS.
+      SESSION_COOKIE_SECURE: "false"
+    ports:
+      - "${APP_PORT:-8787}:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8787/api/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  orderops-postgres:

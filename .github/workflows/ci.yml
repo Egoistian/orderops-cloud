@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orderops_cloud_test
+          POSTGRES_USER: orderops
+          POSTGRES_PASSWORD: orderops-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orderops -d orderops_cloud_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://orderops:orderops-ci-only@127.0.0.1:5432/orderops_cloud_test
+      SEED_DEMO_PASSWORD: orderops-ci-demo-password
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Create schema and seed synthetic demo data
+        run: npm run db:setup
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run PostgreSQL integration tests
+        run: npm run test:integration
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build production web app
+        run: npm run build
+
+      - name: Run browser user-flow tests
+        run: npm run test:e2e
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev
+
+      - name: Build the production container
+        run: docker build --tag orderops-cloud-ci .

@@ -1,0 +1,857 @@
+openapi: 3.1.0
+info:
+  title: OrderOps Cloud API
+  version: 1.0.0
+  summary: Synthetic multi-tenant order-operations portfolio API
+  description: |
+    API contract for the OrderOps Cloud personal portfolio project. Every
+    company, user, order, amount, and audit event in the demo seed is synthetic.
+    Protected endpoints derive tenant and role context from an HttpOnly session
+    cookie; callers do not submit a tenant ID for domain operations.
+  license:
+    name: UNLICENSED
+    identifier: UNLICENSED
+servers:
+  - url: http://127.0.0.1:8787
+    description: Local Node.js server
+  - url: /
+    description: Same-origin deployment
+tags:
+  - name: Health
+    description: API and database readiness.
+  - name: Authentication
+    description: Synthetic demo accounts and cookie-session lifecycle.
+  - name: Operations
+    description: Tenant-scoped metrics, order reads, and workflow transitions.
+  - name: Audit
+    description: Append-only order workflow history returned by the API.
+security:
+  - sessionCookie: []
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Legacy alias for PostgreSQL readiness
+      security: []
+      responses:
+        "200":
+          description: The API completed a database query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+              example:
+                ok: true
+                service: orderops-api
+                database: ready
+        "503":
+          $ref: "#/components/responses/DatabaseUnavailable"
+
+  /api/health/live:
+    get:
+      tags: [Health]
+      operationId: getLiveness
+      summary: Check whether the API process can answer HTTP requests
+      security: []
+      responses:
+        "200":
+          description: The API process is live; this endpoint does not query PostgreSQL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivenessResponse"
+
+  /api/health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Check whether PostgreSQL is ready for API work
+      security: []
+      responses:
+        "200":
+          description: PostgreSQL responded to the readiness query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          $ref: "#/components/responses/DatabaseUnavailable"
+
+  /api/auth/demo-accounts:
+    get:
+      tags: [Authentication]
+      operationId: listDemoAccounts
+      summary: List synthetic accounts offered by the portfolio login screen
+      description: |
+        This intentionally public endpoint returns only synthetic demo account
+        metadata. It never returns a password or password hash. The top-level
+        flag tells the login screen whether shared public-demo safeguards are active.
+      security: []
+      responses:
+        "200":
+          description: Synthetic demo accounts grouped by their tenant metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [accounts, publicDemoMode]
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DemoAccount"
+                  publicDemoMode:
+                    type: boolean
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Create an eight-hour demo session
+      description: |
+        In the default local mode, login only creates a session. When
+        `PUBLIC_DEMO_MODE=true`, a successful synthetic demo login first resets
+        that tenant's orders and audit events while preserving users and existing
+        sessions. Excessive successful login/resets return `429`.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/MutationMarker"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              tenantSlug: seoul-fresh
+              email: operator@seoulfresh.demo
+              password: orderops-demo-2026
+      responses:
+        "200":
+          description: Login succeeded and the response set an HttpOnly session cookie.
+          headers:
+            Set-Cookie:
+              description: |
+                `orderops_session`; HttpOnly; Path=/; SameSite=Strict; Max-Age=28800.
+                `Secure` is added when the API runs in production mode.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Required fields are absent or exceed accepted lengths.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                required:
+                  value:
+                    error:
+                      code: LOGIN_FIELDS_REQUIRED
+                      message: 회사, 이메일, 비밀번호를 모두 입력해 주세요.
+                invalid:
+                  value:
+                    error:
+                      code: LOGIN_FIELDS_INVALID
+                      message: 로그인 입력값의 길이를 확인해 주세요.
+        "401":
+          description: Tenant, email, or password did not match an active demo user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: LOGIN_FAILED
+                  message: 로그인 정보를 확인해 주세요.
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/JsonRequired"
+        "429":
+          description: Failed-login or successful public-demo reset limit was exhausted.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Delete the current session
+      parameters:
+        - $ref: "#/components/parameters/MutationMarker"
+      responses:
+        "204":
+          description: Session deleted; response body is empty.
+          headers:
+            Set-Cookie:
+              description: Clears `orderops_session` with `Max-Age=0`.
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+        "403":
+          $ref: "#/components/responses/CsrfRejected"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentUser
+      summary: Return the user and tenant resolved from the current session
+      responses:
+        "200":
+          description: Authenticated user context.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+
+  /api/metrics:
+    get:
+      tags: [Operations]
+      operationId: getMetrics
+      summary: Return aggregate metrics for the session tenant
+      responses:
+        "200":
+          description: Metrics calculated only from orders in the authenticated tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [metrics]
+                properties:
+                  metrics:
+                    $ref: "#/components/schemas/Metrics"
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/orders:
+    get:
+      tags: [Operations]
+      operationId: listOrders
+      summary: List up to 100 orders from the session tenant
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive match against order number, customer, region, or product. The server trims this value to 100 characters.
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Exact status filter. Unrecognized or repeated values return `400 FILTER_INVALID`.
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - name: exceptions
+          in: query
+          description: Set to the literal string `true` to return only orders with exceptions.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Orders from the authenticated tenant, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    maxItems: 100
+                    items:
+                      $ref: "#/components/schemas/Order"
+        "400":
+          description: A query filter is malformed, repeated, or unsupported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: FILTER_INVALID
+                  message: 지원하지 않는 주문 상태 필터입니다.
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/orders/{orderId}/audit:
+    get:
+      tags: [Audit]
+      operationId: listOrderAudit
+      summary: List up to 30 audit events for an order in the session tenant
+      description: An absent or inaccessible order returns `404` without revealing another tenant's data.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Newest audit event first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [audit]
+                properties:
+                  audit:
+                    type: array
+                    maxItems: 30
+                    items:
+                      $ref: "#/components/schemas/AuditEvent"
+        "400":
+          description: The order ID does not match the accepted format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No matching order exists inside the authenticated tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/orders/{orderId}/status:
+    patch:
+      tags: [Operations]
+      operationId: transitionOrderStatus
+      summary: Apply an authorized status transition and append its audit event
+      description: |
+        The API locks the tenant-scoped order row, checks `expectedVersion`,
+        validates the user's role and workflow transition, then updates the order
+        and inserts the audit event in one PostgreSQL transaction. Shared public
+        demo mode replaces user-provided notes with a fixed safe note and applies
+        per-instance session and socket-address mutation limits.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/MutationMarker"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusTransitionRequest"
+            example:
+              status: shipped
+              expectedVersion: 3
+              note: 운송장 확인 후 출고 처리
+      responses:
+        "200":
+          description: Transition committed together with its audit event.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [order, audit]
+                properties:
+                  order:
+                    $ref: "#/components/schemas/Order"
+                  audit:
+                    $ref: "#/components/schemas/AuditEvent"
+        "400":
+          description: Missing version, invalid status, or an overlong note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                versionRequired:
+                  value:
+                    error:
+                      code: VERSION_REQUIRED
+                      message: 주문의 현재 버전이 필요합니다.
+                invalidStatus:
+                  value:
+                    error:
+                      code: INVALID_STATUS
+                      message: 지원하지 않는 주문 상태입니다.
+                noteTooLong:
+                  value:
+                    error:
+                      code: NOTE_TOO_LONG
+                      message: 변경 사유는 200자 이내로 입력해 주세요.
+        "401":
+          $ref: "#/components/responses/AuthRequired"
+        "403":
+          description: The request marker/origin check failed, or the role/state disallows the transition.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                transitionForbidden:
+                  value:
+                    error:
+                      code: TRANSITION_FORBIDDEN
+                      message: 현재 역할 또는 주문 상태에서는 이 작업을 수행할 수 없습니다.
+                csrfRejected:
+                  value:
+                    error:
+                      code: CSRF_REJECTED
+                      message: 변경 요청을 확인할 수 없습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.
+        "404":
+          description: No matching order exists inside the authenticated tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: ORDER_NOT_FOUND
+                  message: 주문을 찾을 수 없습니다.
+        "409":
+          description: The order changed after the client last read it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: VERSION_CONFLICT
+                  message: 다른 사용자가 먼저 주문을 변경했습니다. 최신 상태를 다시 불러와 주세요.
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/JsonRequired"
+        "429":
+          description: The public-demo session or socket-address mutation budget was exhausted.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: DEMO_MUTATION_RATE_LIMITED
+                  message: 공개 데모 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: orderops_session
+      description: Opaque random token; only its SHA-256 hash is stored in PostgreSQL.
+
+  parameters:
+    MutationMarker:
+      name: X-OrderOps-Request
+      in: header
+      required: true
+      description: |
+        Same-origin mutation marker. The API also rejects browser Fetch Metadata
+        when `Sec-Fetch-Site` is neither `same-origin` nor `none`.
+      schema:
+        type: string
+        const: "1"
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      description: Synthetic order identifier scoped by the session tenant.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        pattern: "^[a-zA-Z0-9_-]+$"
+      example: sf-1001
+
+  responses:
+    DatabaseUnavailable:
+      description: PostgreSQL is unavailable, so the API is not ready.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ReadinessUnavailableResponse"
+    CsrfRejected:
+      description: The required request marker is absent or Fetch Metadata identifies a cross-site request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: CSRF_REJECTED
+              message: 변경 요청을 확인할 수 없습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.
+    JsonRequired:
+      description: This operation accepts only an `application/json` request body.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: JSON_REQUIRED
+              message: JSON 형식의 요청이 필요합니다.
+    PayloadTooLarge:
+      description: The JSON body exceeds the API's 100KB limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: 요청 본문이 너무 큽니다.
+    AuthRequired:
+      description: The session cookie is missing, invalid, or expired.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            missing:
+              value:
+                error:
+                  code: AUTH_REQUIRED
+                  message: 로그인이 필요합니다.
+            expired:
+              value:
+                error:
+                  code: SESSION_EXPIRED
+                  message: 세션이 만료되었습니다. 다시 로그인해 주세요.
+    InternalError:
+      description: The server could not complete the request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: 서버에서 요청을 처리하지 못했습니다.
+
+  schemas:
+    Role:
+      type: string
+      enum: [admin, operator, viewer]
+
+    OrderStatus:
+      type: string
+      enum: [received, normalized, exception, ready, shipped]
+
+    Priority:
+      type: string
+      enum: [high, normal, low, review]
+
+    Tenant:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, name, email, role, tenant, publicDemoMode]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/Role"
+        tenant:
+          $ref: "#/components/schemas/Tenant"
+        publicDemoMode:
+          type: boolean
+          description: True only when shared public-demo reset and input safeguards are active.
+
+    DemoAccount:
+      type: object
+      additionalProperties: false
+      required: [email, name, role, tenantSlug, tenantName]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        tenantSlug:
+          type: string
+        tenantName:
+          type: string
+
+    LoginRequest:
+      type: object
+      additionalProperties: true
+      required: [tenantSlug, email, password]
+      properties:
+        tenantSlug:
+          type: string
+          minLength: 1
+          maxLength: 64
+        email:
+          type: string
+          minLength: 1
+          maxLength: 200
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required: [user, expiresAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        expiresAt:
+          type: string
+          format: date-time
+
+    Metrics:
+      type: object
+      additionalProperties: false
+      required: [total, exceptions, ready, shipped, totalAmount, lastUpdatedAt, statusCounts]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        exceptions:
+          type: integer
+          minimum: 0
+        ready:
+          type: integer
+          minimum: 0
+        shipped:
+          type: integer
+          minimum: 0
+        totalAmount:
+          type: integer
+          minimum: 0
+        lastUpdatedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        statusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+          propertyNames:
+            enum: [received, normalized, exception, ready, shipped]
+
+    Order:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - orderNumber
+        - orderedAt
+        - customerName
+        - maskedPhone
+        - region
+        - productName
+        - quantity
+        - lane
+        - priority
+        - status
+        - exceptions
+        - normalizationNotes
+        - warehouse
+        - shippingLine
+        - totalAmount
+        - version
+        - updatedAt
+        - allowedTransitions
+      properties:
+        id:
+          type: string
+        orderNumber:
+          type: string
+        orderedAt:
+          type: string
+          format: date-time
+        customerName:
+          type: string
+        maskedPhone:
+          type: string
+        region:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        lane:
+          type: string
+        priority:
+          $ref: "#/components/schemas/Priority"
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        exceptions:
+          type: array
+          items:
+            type: string
+        normalizationNotes:
+          type: array
+          items:
+            type: string
+        warehouse:
+          type: string
+        shippingLine:
+          type: string
+        totalAmount:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+        allowedTransitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderStatus"
+
+    AuditEvent:
+      type: object
+      additionalProperties: false
+      required: [id, action, fromStatus, toStatus, note, actorName, actorRole, createdAt]
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+          examples: [order.status_changed]
+        fromStatus:
+          oneOf:
+            - $ref: "#/components/schemas/OrderStatus"
+            - type: "null"
+        toStatus:
+          oneOf:
+            - $ref: "#/components/schemas/OrderStatus"
+            - type: "null"
+        note:
+          oneOf:
+            - type: string
+            - type: "null"
+        actorName:
+          type: string
+        actorRole:
+          $ref: "#/components/schemas/Role"
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusTransitionRequest:
+      type: object
+      additionalProperties: true
+      required: [status, expectedVersion]
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        expectedVersion:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          maxLength: 200
+          description: Replaced with a fixed safe value when publicDemoMode is true.
+
+    LivenessResponse:
+      type: object
+      additionalProperties: false
+      required: [ok, service]
+      properties:
+        ok:
+          const: true
+        service:
+          const: orderops-api
+
+    ReadinessResponse:
+      type: object
+      additionalProperties: false
+      required: [ok, service, database]
+      properties:
+        ok:
+          const: true
+        service:
+          const: orderops-api
+        database:
+          const: ready
+
+    ReadinessUnavailableResponse:
+      type: object
+      additionalProperties: false
+      required: [ok, service, database]
+      properties:
+        ok:
+          const: false
+        service:
+          const: orderops-api
+        database:
+          const: unavailable
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string

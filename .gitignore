@@ -1,0 +1,19 @@
+node_modules/
+dist/
+release/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+coverage/
+test-results/
+playwright-report/
+.lazyweb/
+.vercel/
+README 2.md
+public/index.html
+public/assets/
+portfolio_assets/screenshots/
+portfolio_assets/yeongjin-orderops-concept.png
+portfolio_upload_clean/
